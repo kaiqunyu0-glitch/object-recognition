@@ -30,6 +30,42 @@ from src.duplicates import find_cross_split_duplicates, report_duplicates
 from src.utils import write_json
 
 
+def resolve_train_batch(batch, yolo_device: str) -> int | float:
+    """Use Ultralytics AutoBatch on NVIDIA GPUs. CPU and MPS get a small fixed batch.
+
+    ``batch=-1`` asks Ultralytics to profile the GPU and pick a size that fits.
+    That profiler does not run on CPU or Apple MPS; YOLO11x at batch 16 would
+    also be a poor default there, so those devices use 2 images at a time.
+    A positive ``batch`` is kept as written.
+    """
+    if isinstance(batch, str) and batch.strip().lower() in {"auto", "-1"}:
+        batch = -1
+    numeric = float(batch)
+    if numeric == -1 or 0 < numeric < 1:
+        if yolo_device == "0":
+            print("Batch: auto. Ultralytics will pick a size that fits the GPU.", flush=True)
+            return numeric
+        print(
+            "Auto batch only runs on an NVIDIA GPU. Using batch=2 on this device. "
+            "yolo11x is slow on CPU; --model yolo11n.pt or yolo11s.pt is a better fit there.",
+            flush=True,
+        )
+        return 2
+    if numeric < 1:
+        raise ValueError("batch must be -1 (auto) or a positive integer.")
+    return int(numeric)
+
+
+def resolve_eval_batch(batch, yolo_device: str) -> int:
+    """Evaluation needs a fixed batch. Auto (-1) becomes 4 on CUDA and 2 elsewhere."""
+    if isinstance(batch, str) and batch.strip().lower() in {"auto", "-1"}:
+        batch = -1
+    numeric = float(batch)
+    if numeric >= 1:
+        return int(numeric)
+    return 4 if yolo_device == "0" else 2
+
+
 def ultralytics_device(requested: str | None) -> str:
     """Map our device name onto the string Ultralytics expects."""
     device = get_device(requested)
@@ -59,8 +95,8 @@ def _load_yolo(model_name: str):
     except Exception as exc:
         raise RuntimeError(
             f"Could not load model {model_name}. "
-            "Check the name (yolo11n.pt, yolo11s.pt, yolov8n.pt, ...) and your network "
-            "if this is the first time those weights are downloaded. "
+            "Check the name (yolo11n.pt, yolo11s.pt, yolo11m.pt, yolo11l.pt, yolo11x.pt, yolov8n.pt) "
+            "and your network if this is the first time those weights are downloaded. "
             "yolo11n.yaml trains a tiny model from scratch and does not download weights."
         ) from exc
 
@@ -109,6 +145,7 @@ def fit_detector(cfg: dict, data_root: Path) -> Path:
 
     model_name = str(cfg["model"])
     yolo_device = ultralytics_device(str(cfg.get("device", "auto")))
+    train_batch = resolve_train_batch(cfg["batch"], yolo_device)
     use_amp = bool(cfg["train"]["amp"]) and yolo_device == "0"
     if cfg["train"]["amp"] and yolo_device != "0":
         print(
@@ -126,7 +163,7 @@ def fit_detector(cfg: dict, data_root: Path) -> Path:
         "data": str(prepared.yaml_path),
         "epochs": int(cfg["epochs"]),
         "imgsz": int(cfg["imgsz"]),
-        "batch": int(cfg["batch"]),
+        "batch": train_batch,
         "device": yolo_device,
         "workers": int(cfg["workers"]),
         "project": str(output_dir),
@@ -198,6 +235,7 @@ def evaluate_detector(cfg: dict, checkpoint: Path | None, conf: float | None, ma
     if not weights.is_file():
         raise FileNotFoundError(f"Could not find weights at {weights}.")
     yolo_device = ultralytics_device(str(cfg.get("device", "auto")))
+    eval_batch = resolve_eval_batch(cfg["batch"], yolo_device)
     model = _load_yolo(str(weights))
     print(f"Device: {describe_device(get_device(str(cfg.get('device', 'auto'))))}", flush=True)
     print(f"Model: {weights}", flush=True)
@@ -207,7 +245,7 @@ def evaluate_detector(cfg: dict, checkpoint: Path | None, conf: float | None, ma
         data=str(data_yaml),
         split="test",
         imgsz=int(record.get("imgsz", cfg["imgsz"])),
-        batch=int(cfg["batch"]),
+        batch=eval_batch,
         device=yolo_device,
         workers=int(cfg["workers"]),
         plots=False,

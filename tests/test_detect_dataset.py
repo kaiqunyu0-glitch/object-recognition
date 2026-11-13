@@ -10,6 +10,7 @@ from PIL import Image
 from src.config import load_config
 from src.detect.boxes import iou_xyxy, percent_top_left_to_yolo
 from src.detect.dataset import prepare_detection_dataset
+from src.detect.engine import resolve_eval_batch, resolve_train_batch
 from src.detect.report import match_detections
 from src.detect.synthetic import make_detection_dataset
 
@@ -23,6 +24,25 @@ def _jpeg(path: Path, size: tuple[int, int], color: tuple[int, int, int] = (20, 
 
 def _config() -> dict:
     return load_config(ROOT / "config.detect.yaml")
+
+
+def test_default_detector_is_yolo11x_and_lists_the_smaller_models():
+    text = (ROOT / "config.detect.yaml").read_text(encoding="utf-8")
+    assert "model: yolo11x.pt" in text
+    for name in ("yolo11l.pt", "yolo11m.pt", "yolo11s.pt", "yolo11n.pt", "yolov8n.pt"):
+        assert name in text
+    assert load_config(ROOT / "config.detect.yaml")["model"] == "yolo11x.pt"
+    assert load_config(ROOT / "config.detect.yaml")["batch"] == -1
+
+
+def test_auto_batch_is_only_used_on_nvidia():
+    assert resolve_train_batch(-1, "0") == -1
+    assert resolve_train_batch(-1, "cpu") == 2
+    assert resolve_train_batch(-1, "mps") == 2
+    assert resolve_train_batch(8, "cpu") == 8
+    assert resolve_eval_batch(-1, "0") == 4
+    assert resolve_eval_batch(-1, "cpu") == 2
+    assert resolve_eval_batch(8, "mps") == 8
 
 
 def test_percent_box_becomes_a_yolo_center():

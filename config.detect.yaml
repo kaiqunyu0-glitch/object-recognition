@@ -1,17 +1,23 @@
 # 偵測訓練的結果（模型、資料集複本、測試報表）會放在這裡。
 output_dir: runs/detect
 
-# yolo11n 最小也最快。照片多、東西又小時可以改成 yolo11s 或 yolo11m。
-# 也可以用 yolov8n.pt、yolov8s.pt。第一次訓練會下載 COCO 預訓練權重。
-# 結尾是 .yaml（例如 yolo11n.yaml）代表從零開始，不下載權重，只給測試用。
-model: yolo11n.pt
+# 預設是 yolo11x，準確度最高，權重大約 110MB。
+# CPU 上很慢，建議用 NVIDIA 顯示卡訓練。
+# 想換小一點的模型：yolo11l.pt、yolo11m.pt、yolo11s.pt、yolo11n.pt，或 yolov8n.pt。
+# 也可以下指令：python detect_train.py --data ... --model yolo11n.pt
+# 結尾是 .yaml（例如 yolo11n.yaml）代表從零開始，不下載權重，只給自動測試用。
+model: yolo11x.pt
 
 # 輸入邊長。640 是 YOLO 的常用值。顯示卡記憶體不夠就改成 512 或 416。
 imgsz: 640
 
 # 最多訓練幾輪。驗證 mAP 若提早停住，patience 會先停。
 epochs: 80
-batch: 16
+
+# -1：有 NVIDIA GPU 時，自動選放得進顯示卡的 batch（大約用 60% 記憶體）。
+# CPU 和 Mac 不支援這個自動選法，程式會改成 2。
+# 想自己指定就寫正整數，例如 4 或 8。
+batch: -1
 
 # auto：有 NVIDIA GPU 用 cuda，有 Apple GPU 用 mps，否則用 cpu。
 device: auto

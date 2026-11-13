@@ -2,7 +2,7 @@
 
 這個專案的主要功能是**偵測**：一張照片裡可以同時有很多不同的東西，模型要把它們都找出來，每個物件一個邊界框、一個類別、一個信心。
 
-它用 Ultralytics YOLO（預設 YOLO11 nano，已在 COCO 上預訓練）在你自己的標註上微調。有 NVIDIA 顯示卡用 CUDA，Apple 晶片用 MPS，否則用 CPU。
+它用 Ultralytics YOLO 在你自己的標註上微調。預設模型是 **YOLO11x**（`yolo11x.pt`，已在 COCO 上預訓練，權重大約 110MB）。這是這一系列裡最大的模型，CPU 上會很慢，建議用 NVIDIA 顯示卡訓練。有顯示卡用 CUDA，Apple 晶片用 MPS，否則用 CPU。
 
 同一份程式裡也留著「一張照片只回答一個類別」的分類流程。那個流程在最後一節。你現在要做的是偵測，請從下面的標註步驟開始。
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 有 NVIDIA 顯示卡時，先到 [pytorch.org](https://pytorch.org) 選對應 CUDA 版本，裝好 `torch` 和 `torchvision`，再執行 `pip install -r requirements.txt`。
 
-每次開新的終端機都要再啟動一次 `.venv`。第一次用 `yolo11n.pt` 訓練會下載 COCO 預訓練權重（nano 大約幾 MB 到幾十 MB），需要網路。
+每次開新的終端機都要再啟動一次 `.venv`。第一次訓練會下載 YOLO11x 的 COCO 預訓練權重，大約 110MB，需要網路。
 
 iPhone 的 HEIC 可以在照片 App 輸出成 JPEG，或另外安裝：
 
@@ -201,8 +201,10 @@ python detect_predict.py image.jpg
 python detect_predict.py photo_folder/
 python detect_predict.py video.mp4
 python detect_predict.py 0
-python detect_train.py --data /path/to/dataset --model yolo11s.pt
+python detect_train.py --data /path/to/dataset --model yolo11n.pt
 ```
+
+預設是 `yolo11x`。只有 CPU、或顯示卡記憶體不夠時，用 `--model` 換成較小的模型。`yolo11n.pt` 最小最快，然後是 `yolo11s.pt`、`yolo11m.pt`、`yolo11l.pt`。`yolov8n.pt` 也可以。改 `config.detect.yaml` 裡的 `model` 效果一樣。
 
 `0` 是預設攝影機。影片或攝影機按 Ctrl+C 停止。每張照片會印出物件、信心和框，並把畫好框的圖存到 `runs/detect/predictions/`。
 
@@ -253,7 +255,13 @@ recall:    0.850
 
 某一類的 recall 很低：多拍那種它找不到的角度和遮擋，並檢查是不是漏標。某一類的 precision 很低：看看 `errors.csv` 裡的 false_positive，常常是背景裡有長得很像的東西沒被標成別的類，或是框得太鬆。
 
-CPU 上每一輪可能要幾分鐘。畫面有在走 epoch 就代表還在跑。記憶體不夠就把 `batch` 改成 8 或 4，或把 `imgsz` 改成 512。Mac 若出現 MPS 錯誤，把 `device` 改成 `cpu`。
+YOLO11x 在 CPU 上每一輪可能要很久，建議有 NVIDIA 顯示卡再訓練這個預設模型。只有 CPU 時改成較小的模型：
+
+```bash
+python detect_train.py --data /path/to/dataset --model yolo11n.pt
+```
+
+`batch: -1` 會在 NVIDIA GPU 上自動選放得進記憶體的張數。CPU 和 Mac 會改成一次 2 張。還是出現記憶體不足，就把 `batch` 寫成 4 或 2，或把 `imgsz` 改成 512。Mac 若出現 MPS 錯誤，把 `device` 改成 `cpu`。
 
 ## 設定檔
 
@@ -261,10 +269,10 @@ CPU 上每一輪可能要幾分鐘。畫面有在走 epoch 就代表還在跑。
 
 | 設定 | 作用 |
 | --- | --- |
-| `model` | `yolo11n.pt`（預設，最快）、`yolo11s.pt`、`yolo11m.pt`，或 `yolov8n.pt` |
+| `model` | 預設 `yolo11x.pt`（約 110MB）。也可選 `yolo11l.pt`、`yolo11m.pt`、`yolo11s.pt`、`yolo11n.pt`、`yolov8n.pt` |
 | `imgsz` | 輸入邊長，預設 640 |
 | `epochs` / `patience` | 最多幾輪；驗證 mAP 多久沒進步就停 |
-| `batch` | 一次看幾張。顯示卡記憶體不夠就調小 |
+| `batch` | 預設 `-1`：NVIDIA GPU 自動選張數。CPU / Mac 會用 2。想固定就寫 4 或 8 |
 | `conf` | 預測以及漏掉/多框清單的信心門檻。不影響 mAP 的算法 |
 | `match_iou` | 框和標準答案要重疊多少才算同一個物件 |
 | `seed` | 切分和訓練的隨機種子 |
@@ -287,7 +295,13 @@ python predict.py image.jpg
 
 ## English
 
-The primary task is multi-object detection. One photo may contain many things; the model returns a box, a class, and a confidence for each.
+The primary task is multi-object detection. One photo may contain many things; the model returns a box, a class, and a confidence for each. The default weights are **YOLO11x** (`yolo11x.pt`, about 110MB, pretrained on COCO). That model is slow on CPU and is meant for an NVIDIA GPU. Smaller choices are `yolo11l.pt`, `yolo11m.pt`, `yolo11s.pt`, `yolo11n.pt`, and `yolov8n.pt`:
+
+```bash
+python detect_train.py --data /path/to/dataset --model yolo11n.pt
+```
+
+Or set `model` in `config.detect.yaml`. `batch: -1` asks Ultralytics to pick a batch that fits the GPU (about 60% of its memory). On CPU and Mac the program uses batch 2 instead.
 
 ```bash
 python -m venv .venv

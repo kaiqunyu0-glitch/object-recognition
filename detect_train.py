@@ -31,7 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data", required=True, help="Dataset folder, data.yaml, or JSON export.")
     parser.add_argument("--config", default="config.detect.yaml", help="YAML settings file.")
     parser.add_argument("--output-dir", default=None, help="Where to write the checkpoint and reports.")
-    parser.add_argument("--model", default=None, help="For example yolo11n.pt, yolo11s.pt, or yolov8n.pt.")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override config model. Examples: yolo11n.pt, yolo11s.pt, yolo11m.pt, yolo11l.pt, yolo11x.pt, yolov8n.pt.",
+    )
     parser.add_argument("--device", default=None, help="auto, cpu, cuda, or mps.")
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument(
