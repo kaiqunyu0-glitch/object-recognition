@@ -1,0 +1,25 @@
+# Image classifier for phone photos.
+#
+# Mac and Windows:
+#   pip install -r requirements.txt
+#
+# Linux without an NVIDIA GPU (this is also what CI does):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+#
+# A machine with an NVIDIA GPU should install the CUDA build from
+# https://pytorch.org first, then install the rest of this file.
+#
+# Optional, only if you want to open iPhone HEIC files directly:
+#   pip install pillow-heif
+
+torch>=2.2
+torchvision>=0.17
+PyYAML>=6.0
+Pillow>=10.0
+numpy>=1.24
+scikit-learn>=1.3
+matplotlib>=3.7
+tqdm>=4.66
+onnx>=1.15
+pytest>=8.0

@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local datasets, checkpoints, and training reports
+data/
+runs/
+*.pt
+*.pth
+*.onnx
