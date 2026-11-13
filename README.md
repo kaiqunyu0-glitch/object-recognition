@@ -1,21 +1,22 @@
-# 用手機照片辨識日常物品
+# 用手機照片找出畫面裡的每一個物品
 
-這個專案用遷移學習訓練一個影像分類模型。你拍好幾類日常物品，用資料夾名稱當標籤，然後執行一條指令就能開始訓練。
+這個專案的主要功能是**偵測**：一張照片裡可以同時有很多不同的東西，模型要把它們都找出來，每個物件一個邊界框、一個類別、一個信心。
 
-目標是在「沒有拿來訓練、也沒有拿來挑選模型」的測試照片上達到 99% 以上。程式會自己把照片分成訓練、驗證、測試，並檢查有沒有幾乎重複的照片漏到不同組。
+它用 Ultralytics YOLO（預設 YOLO11 nano，已在 COCO 上預訓練）在你自己的標註上微調。有 NVIDIA 顯示卡用 CUDA，Apple 晶片用 MPS，否則用 CPU。
 
-99% 來自照片拍得夠多樣，不是把模型調到會背答案。訓練集上看起來很高的正確率不算數。
+同一份程式裡也留著「一張照片只回答一個類別」的分類流程。那個流程在最後一節。你現在要做的是偵測，請從下面的標註步驟開始。
 
-## 這個程式在做什麼
+## 偵測和分類差在哪
 
-模型先在 ImageNet（一百多萬張、一千類的公開照片）上學過邊緣、顏色和形狀。我們留下那些能力，把最後一層換成你的類別：
+分類：整張照片只准有一個答案，例如「這張是杯子」。照片裡如果同時有杯子和鑰匙，分類模型沒有地方把兩個都說出來。
 
-1. 第一階段只訓練新的最後一層，原本的層先固定。
-2. 第二階段用較小的學習率，微調整個網路。
+偵測：模型可以在同一張照片裡畫很多框。每一個框有三樣東西：
 
-有 NVIDIA 顯示卡會用 CUDA，Apple 晶片會用 MPS，否則用 CPU。不用自己改程式。
+- 類別：這是什麼
+- 邊界框：它在畫面的哪裡
+- 信心：模型有多確定
 
-驗證集用來決定要留哪一輪的模型。測試集留到最後才看一次，那個數字才是成績。
+所以標註方式也不同。分類是把照片放進以類別命名的資料夾。偵測是在照片上把每一個物件圈起來。
 
 ## 安裝
 
@@ -37,7 +38,7 @@ Windows：
 .venv\Scripts\activate
 ```
 
-Mac、Windows，或是已經有 NVIDIA 顯示卡、想用官方預設安裝方式：
+Mac、Windows，或是已經有 NVIDIA 顯示卡：
 
 ```bash
 pip install -r requirements.txt
@@ -50,104 +51,229 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-有 NVIDIA 顯示卡時，先到 [pytorch.org](https://pytorch.org) 選對應 CUDA 版本的安裝指令，裝好 `torch` 和 `torchvision`，再執行 `pip install -r requirements.txt`。
+有 NVIDIA 顯示卡時，先到 [pytorch.org](https://pytorch.org) 選對應 CUDA 版本，裝好 `torch` 和 `torchvision`，再執行 `pip install -r requirements.txt`。
 
-每次開新的終端機都要再啟動一次 `.venv`。第一次訓練會下載預訓練權重（ConvNeXt-Tiny 大約 100MB），需要網路。下載完會留在本機。
+每次開新的終端機都要再啟動一次 `.venv`。第一次用 `yolo11n.pt` 訓練會下載 COCO 預訓練權重（nano 大約幾 MB 到幾十 MB），需要網路。
 
-iPhone 若是 HEIC，可以在照片 App 輸出成 JPEG，或另外安裝：
+iPhone 的 HEIC 可以在照片 App 輸出成 JPEG，或另外安裝：
 
 ```bash
 pip install pillow-heif
 ```
 
-直著拍沒關係。程式會讀 EXIF 方向，把照片轉成你在相機裡看到的方向。
+直著拍沒關係。匯出成 YOLO 之後，框是你在標註工具裡看到的方向。程式會把 EXIF 方向烙進像素，框的相對位置保持不變。
 
-## 怎麼拍照、怎麼標註
+## 怎麼標註
 
-想靠近 99%，先看這一段。類別大約 5 到 20 個日常物品，例如杯子、鑰匙、水瓶、鞋子、書、遙控器。
+建議用 Roboflow 的免費方案。它會帶你畫框，並匯出這個程式能直接讀的 YOLO 格式。Label Studio 是完全跑在你電腦上的替代方案，步驟在後面。
 
-每一類要多少張：
+畫框時請固定一套規則，整份資料都用同一套：
 
-| 情況 | 每一類大約幾張 |
-| --- | --- |
-| 類別長得差很多 | 80 到 120 張通常就夠 |
-| 類別有一點像 | 150 到 200 張，而且要拍到能分辨的細節 |
-| 少於 40 張 | 可以先跑通流程，不要期待 99% |
+- 框貼著物件外緣，不要留一大圈背景，也不要切掉一半
+- 畫面裡每一個你想辨認的物件都要框，漏標會教模型「那裡不該有框」
+- 被遮住時，從頭到尾只選一種：框整個物件，或只框看得到的部分
+- 類別名稱用英文短名、不要空格：`water_bottle`，不要 `water bottle`
+- 不要用連拍湊數量。幾乎一樣的照片若被分到訓練和測試，分數會灌水
 
-每一類至少 50 張才值得認真看測試分數。照片少的時候，測試集可能只有十幾張，100% 只代表那十幾張碰巧都對。
+### Roboflow（建議，逐步）
 
-同一類裡要換著拍，不要用連拍湊數量：
-
-- 至少 4 種角度：正面、側面、斜上方、再低一點
-- 至少 3 種光線：窗邊、室內日光燈、晚上的燈
-- 至少 3 種背景：桌子、地板、手裡拿著、戶外都可以
-- 有的近、有的遠，物件不要永遠放在正中間
-- 偶爾讓手指遮到一點點
-- 可以分兩天拍。衣服、桌面、天氣變了，模型才不會背背景
-
-標註方式：
-
-- 一張照片只放一個主要物件
-- 資料夾名稱就是答案。用英文短名、不要空格：`water_bottle`，不要 `water bottle`
-- `Mug` 和 `mug` 在 Linux 上會被當成兩個類別。名稱請固定一種寫法
-- 不確定的照片不要放進去
-- 同一張照片不要複製到兩個資料夾，也不要複製到 train 和 test
-
-兩件物品如果長得很像（兩支白水瓶、兩雙白鞋），模型會把它們搞混。要嘛拍到固定看得到的差異（標籤、鞋帶、瓶蓋），要嘛把它們合成同一類。
-
-拍完不要自己挑「最好看的」當考試照片。讓程式切分，或事先把 train、val、test 分好，之後就不要再把同一組連拍拆進不同資料夾。
-
-## 資料夾長什麼樣子
-
-最簡單：一個資料夾，裡面每個類別一個子資料夾。程式會用固定種子做 70% / 15% / 15% 的分層切分（每一類都按這個比例進訓練、驗證、測試）。
-
-```text
-photos/
-  mug/
-    001.jpg
-    002.png
-  keys/
-    001.jpg
-  bottle/
-    001.jpg
-```
-
-也可以自己分好。有 `train` 資料夾，而且裡面是類別資料夾時，程式不會重切。`val` 也可以叫 `valid` 或 `validation`。
-
-```text
-photos/
-  train/
-    mug/
-    keys/
-  val/
-    mug/
-    keys/
-  test/
-    mug/
-    keys/
-```
-
-只有 train 和 test、沒有 val 時，程式會從 train 挪出一部分當驗證，test 保持不動。只有 train 和 val、沒有 test 時，訓練還是會跑，但不會假裝有一個測試分數。
-
-照片直接放在類別資料夾裡，不要再多包一層。支援 jpg、jpeg、png、webp、bmp。HEIC 需要上面的 `pillow-heif`。
-
-也可以用 CSV，欄位是 `path,label`，路徑可以相對 `--data`：
-
-```csv
-path,label
-mug/001.jpg,mug
-keys/001.jpg,keys
-```
+1. 打開 [https://roboflow.com](https://roboflow.com)，註冊免費帳號。
+2. 建立專案。類型選 **Object Detection**。名稱用英文，例如 `desk-objects`。
+3. 上傳照片（jpg 或 png）。
+4. 進入標註。每個物件拖一個框，輸入或選擇類別，存檔。一張照片可以有很多框，也可以有很多類別。
+5. 把標好的照片加進 Dataset。切分建議設成 train 70%、valid 15%、test 15%。Roboflow 的 valid 就是這個程式的 val。
+6. 產生一個版本後，Export。格式選 **YOLO v8** 或 **YOLOv5 PyTorch txt**。這兩種都是 `class cx cy w h`。下載 zip。
+7. 解壓縮。裡面會有 `data.yaml`，以及 `train/`、`valid/`、`test/`。
+8. 訓練：
 
 ```bash
-python train.py --data photos --csv labels.csv
+python detect_train.py --data /path/to/unzipped-folder
 ```
 
-照片建議放在專案外面，或放在 `data/`。`data/` 和 `runs/` 不會被 git 上傳。
+程式看到現成的 train / valid / test 就不會重切。
+
+### Label Studio（免費、資料留在自己的電腦）
+
+1. 安裝並打開：
+
+```bash
+pip install label-studio
+label-studio
+```
+
+2. 建立專案。Labeling setup 選 **Object Detection with Bounding Boxes**。把標籤改成你的類別。
+3. Import 你的照片，逐張畫框。
+4. Export 選 **JSON**。若匯出選項裡直接有 YOLO，用 YOLO 也可以，然後把解壓後的資料夾交給 `detect_train.py`。
+5. JSON 匯出不含照片檔。請把 `label_studio.json` 和照片放在一起，或把照片放在同層的 `images/` 裡。程式會用檔名對上框。
+6. 訓練：
+
+```bash
+python detect_train.py --data /path/to/that-folder
+```
+
+只有一個池子的照片時，程式會用固定種子做 70% / 15% / 15% 的切分，並盡量讓比較少見的類別也出現在驗證集和測試集。
+
+CVAT 也可以。匯出 **YOLO 1.1**，把解壓後的資料夾路徑傳給 `--data`。
+
+## 要多少照片、多少框
+
+偵測比分類吃資料。分類只要整張照片一個答案；偵測要在各種背景裡把每一個物件的位置也學對。
+
+| 目標 | 大約需要 |
+| --- | --- |
+| 先把流程跑通 | 每類 30 到 50 張照片 |
+| 認真做一個小場景（5 到 15 類、物件長得差很多） | 每類 150 到 300 張以上「有這個物件出現」的照片，而且每類幾百個框 |
+| 兩類長得很像，或物件常常很小、常常被擋住 | 再往上加，而且要刻意拍那些難的情況 |
+
+一張照片裡有 3 個杯子，算 3 個杯子實例，但背景仍是同一張。實例數要夠，場景也要夠。
+
+每一類都要有這些變化，否則模型只記得你的桌子：
+
+- 不同背景、不同房間、室內和窗邊
+- 白天、日光燈、晚上
+- 物件有時近、有時遠，有時貼在畫面邊緣
+- 有時被手或其他東西遮住一部分
+- 有時兩個物件重疊或靠在一起
+- 不要只有一種角度
+
+框的品質和數量一樣重要。框歪了、漏了一個、類別點錯了，模型都會學進去。
+
+## 分數怎麼讀才誠實
+
+偵測沒有一個叫 accuracy 的總分。不要把分類那種「99%」直接拿來當目標。
+
+| 數字 | 它在問什麼 | 這個專案裡，怎樣算高 |
+| --- | --- | --- |
+| mAP50 | 框有沒有蓋到對的物件（重疊 IoU 至少 0.5） | 類別清楚、標註乾淨時，測試集 0.85 到 0.95 算很強 |
+| mAP50-95 | 框還要貼得緊，從寬鬆到嚴格平均 | 真實手機照片 0.60 到 0.80 已經很好。0.90 以上很少見 |
+| precision 精確率 | 畫出來的框裡，有多少真的是那個物件 | 高代表少亂框 |
+| recall 召回率 | 真的在場的物件裡，有多少被找到 | 高代表少漏 |
+
+精確率高、召回率低：模型很保守，沒把握就不畫。召回率高、精確率低：幾乎都找得到，但多了很多錯框。兩個都要看。
+
+驗證集的 mAP 用來決定要留哪一輪的 `best.pt`。測試集的 mAP 才是成績。那些測試照片沒有拿來訓練，也沒有拿來選模型。
+
+`errors.csv` 裡的「漏掉」和「多框」用的是信心門檻（預設 0.25），也就是 `detect_predict.py` 實際會畫出來的框。mAP 會把各種門檻都算過，所以兩個數字不必相等。
+
+若出現 near-duplicate 警告，代表幾乎一樣的照片被分到不同組。刪掉重複的那張再訓練，否則測試分數會看起來比真正的能力高。
+
+不要為了把測試 mAP 調高而一直改設定、一直看測試。調輪數和模型大小時看驗證 mAP，測試留到一段調整結束再看。也不要改 `seed` 來換一份比較好看的考卷。
+
+## 資料長什麼樣子
+
+YOLO 格式是這個程式的原生格式。`data.yaml` 加上照片和標籤：
+
+```text
+dataset/
+  data.yaml
+  images/train/001.jpg
+  images/val/002.jpg
+  images/test/003.jpg
+  labels/train/001.txt
+  labels/val/002.txt
+  labels/test/003.txt
+```
+
+`001.txt` 裡每一行是一個物件，數字都介於 0 和 1，原點在框的中心：
+
+```text
+0 0.512000 0.430000 0.180000 0.220000
+1 0.210000 0.760000 0.090000 0.110000
+```
+
+第一個數字是類別編號，後面是中心 x、中心 y、寬、高，都除以照片的寬和高。
+
+只有 `images/` 和 `labels/`、還沒切分也可以。程式會自己切。COCO JSON、Label Studio JSON 會先轉成上面的格式再訓練。原始照片不會被改寫；轉好的複本在 `runs/detect/dataset/`。
 
 ## 指令
 
-真實照片：
+```bash
+python detect_train.py --data /path/to/dataset
+python detect_eval.py
+python detect_predict.py image.jpg
+```
+
+`detect_eval.py` 和 `detect_predict.py` 讀 `config.detect.yaml` 的 `output_dir`（預設 `runs/detect`）。訓練時如果改過 `--output-dir`，這裡也要加上同一個 `--output-dir`。
+
+其他用法：
+
+```bash
+python detect_predict.py photo_folder/
+python detect_predict.py video.mp4
+python detect_predict.py 0
+python detect_train.py --data /path/to/dataset --model yolo11s.pt
+```
+
+`0` 是預設攝影機。影片或攝影機按 Ctrl+C 停止。每張照片會印出物件、信心和框，並把畫好框的圖存到 `runs/detect/predictions/`。
+
+還沒有自己的標註時，可以用合成的形狀圖把流程跑一遍。這個設定用很小的模型，不下載權重，mAP 也不代表你之後的照片：
+
+```bash
+python scripts/make_synthetic_detection.py --out data/detect_synthetic
+python detect_train.py --data data/detect_synthetic --config config.detect.smoke.yaml
+python detect_eval.py --config config.detect.smoke.yaml
+```
+
+檢查程式本身：
+
+```bash
+python -m pytest tests -q
+```
+
+GitHub Actions 會在 CPU 上跑同一套測試，不需要你的照片。
+
+## 訓練時會看到什麼
+
+| 畫面上的字 | 意思 |
+| --- | --- |
+| epoch | 一輪，訓練照片全部看過一遍 |
+| mAP50 / mAP50-95 | 驗證集上的偵測分數，用來決定要留哪一輪 |
+| best.pt | 驗證分數最高的模型。評估和預測都用這個 |
+| Near-duplicate check | 有沒有幾乎一樣的照片跨組 |
+
+訓練結束後執行 `detect_eval.py`，成績在這幾行：
+
+```text
+mAP50:     0.910
+mAP50-95:  0.720
+precision: 0.880
+recall:    0.850
+```
+
+檔案在 `runs/detect/`：
+
+| 檔案 | 內容 |
+| --- | --- |
+| `train/weights/best.pt` | 要留下的模型 |
+| `test_metrics.json` | 測試集的 mAP、精確率、召回率、每一類的數字 |
+| `confusion_matrix.png` | 列是真正的類別，欄是模型猜的類別。最後一欄是漏掉，最後一列是多框 |
+| `errors.csv` | 漏掉（miss）和多框（false_positive）的照片。先打開這些 |
+| `duplicates.csv` | 幾乎一樣、卻在不同組的照片。沒有這個問題就不會警告 |
+| `dataset/` | 轉正、切分之後的 YOLO 資料。評估沿用這份，不會重切 |
+
+某一類的 recall 很低：多拍那種它找不到的角度和遮擋，並檢查是不是漏標。某一類的 precision 很低：看看 `errors.csv` 裡的 false_positive，常常是背景裡有長得很像的東西沒被標成別的類，或是框得太鬆。
+
+CPU 上每一輪可能要幾分鐘。畫面有在走 epoch 就代表還在跑。記憶體不夠就把 `batch` 改成 8 或 4，或把 `imgsz` 改成 512。Mac 若出現 MPS 錯誤，把 `device` 改成 `cpu`。
+
+## 設定檔
+
+常用開關在 `config.detect.yaml`，檔案裡有中文註解。
+
+| 設定 | 作用 |
+| --- | --- |
+| `model` | `yolo11n.pt`（預設，最快）、`yolo11s.pt`、`yolo11m.pt`，或 `yolov8n.pt` |
+| `imgsz` | 輸入邊長，預設 640 |
+| `epochs` / `patience` | 最多幾輪；驗證 mAP 多久沒進步就停 |
+| `batch` | 一次看幾張。顯示卡記憶體不夠就調小 |
+| `conf` | 預測以及漏掉/多框清單的信心門檻。不影響 mAP 的算法 |
+| `match_iou` | 框和標準答案要重疊多少才算同一個物件 |
+| `seed` | 切分和訓練的隨機種子 |
+
+`config.detect.smoke.yaml` 只給合成圖片和自動測試。不要拿它訓練真實照片。
+
+## 若一張照片只有一個物件：分類
+
+如果每張照片只放一個物件、你只要一個類別名稱、不要框，再用分類。照片放成 `photos/<類別名>/*.jpg`，然後：
 
 ```bash
 python train.py --data /path/to/photos
@@ -155,186 +281,25 @@ python evaluate.py
 python predict.py image.jpg
 ```
 
-`evaluate.py` 和 `predict.py` 會讀 `config.yaml` 裡的 `output_dir`（預設 `runs/exp/best.pt`）。如果訓練時改過 `--output-dir`，這裡要加上 `--checkpoint` 指向那個 `best.pt`。
+分類的成績是測試正確率，不是 mAP。類別之間長得差很多、每類大約 80 到 150 張、角度和背景都有變過時，測試正確率才有機會到 99%。那個數字只算沒拿來訓練、也沒拿來選模型的照片。設定在 `config.yaml`。細節和偵測相同的部分：EXIF、近重複警告、CPU / CUDA / MPS，兩條流程都有。
 
-其他常用參數：
-
-```bash
-python train.py --data /path/to/photos --model mobilenet_v3_small
-python predict.py image.jpg another.jpg
-python predict.py some_folder/
-python predict.py image.jpg --threshold 0.7
-python export_onnx.py
-```
-
-`predict.py` 會印出前幾名和信心。最高機率低於門檻（預設 60%）時，答案是 `unknown`，不會硬猜一個類別。前幾名仍會印出來，方便你看它差一點點猜了什麼。
-
-還沒有自己的照片時，可以先用合成的形狀圖把流程跑一遍。這個設定用很小的模型，不會下載預訓練權重，正確率也不代表你之後的照片：
-
-```bash
-python scripts/make_synthetic_data.py --out data/synthetic
-python train.py --data data/synthetic --config config.smoke.yaml
-python evaluate.py --config config.smoke.yaml
-python predict.py data/synthetic/circle/000.jpg --config config.smoke.yaml
-```
-
-想試公開資料集的一小部分（CIFAR-10，32×32，需要網路，大約 170MB）：
-
-```bash
-python scripts/download_sample.py --out data/cifar_sample
-python train.py --data data/cifar_sample
-```
-
-CIFAR 的圖片很小，不要用它來判斷能不能到 99%。
-
-檢查程式本身沒有壞掉：
-
-```bash
-python -m pytest tests -q
-```
-
-## 怎麼看結果
-
-訓練時每一輪會印一行。詞對照：
-
-| 畫面上的字 | 意思 |
-| --- | --- |
-| epoch | 一輪，訓練照片全部看過一遍 |
-| train_acc | 訓練正確率。模型有沒有記住練習照片 |
-| val_acc | 驗證正確率。用來決定要留哪一輪。不是期末成績 |
-| loss | 損失。我們用正確率挑選模型，損失只是參考 |
-| lr | 學習率。第二階段會比第一階段小 |
-| best.pt | 驗證正確率最高的那一輪 |
-
-訓練結束後會看到：
-
-```text
-Held-out test accuracy: 96.7%  (58/60)
-```
-
-這一行才是成績。括號裡是答對張數 / 測試張數。
-
-同一段還會列出每一類的 precision（猜成這一類的時候有多準）和 recall（這一類的照片抓到多少），以及 support（這一類在測試集有幾張）。support 很小的時候，百分比會跳很兇，要再多拍。
-
-檔案都在 `runs/exp/`（或你設定的 `output_dir`）：
-
-| 檔案 | 內容 |
-| --- | --- |
-| `best.pt` | 要留下來的模型。`evaluate.py` 和 `predict.py` 用的是這個，不是最後一輪 |
-| `test_metrics.json` | 測試正確率、每一類的數字、混淆矩陣的數字 |
-| `confusion_matrix.png` | 混淆矩陣。列是真正的類別，欄是模型猜的類別 |
-| `misclassified.csv` | 猜錯的照片。信心高的排在前面，先打開那些 |
-| `duplicates.csv` | 幾乎一樣、卻被分到不同組的照片。沒有這個問題就不會產生警告 |
-| `split_manifest.csv` | 每一張照片被分到哪一組。評估時會沿用這份清單 |
-| `history.json` | 每一輪的訓練和驗證數字 |
-
-混淆矩陣可以想成這樣。對角線越大越好：
-
-```text
-              猜成 mug    猜成 bottle
-真正是 mug         28            2
-真正是 bottle       1           29
-```
-
-mug 那一列有 2 張被看成 bottle，就到 `misclassified.csv` 把那兩張找出來。常常會發現背景太像、角度太少，或是兩類本來就很像。補拍那些情況，再訓練一次。
-
-其他訊號：
-
-- 訓練正確率接近 100%，測試正確率差一截：照片太像、太少，或是背景被背起來了。看重複照片警告，並補不同的背景和光線。
-- 出現 near-duplicate 警告：連拍或複製的圖進了不同組，測試分數會灌水。刪掉重複的那張，再訓練。
-- 你為了把測試分數變高而一直改設定、一直看測試：那個分數會慢慢失去意義。調學習率和訓練輪數時看驗證正確率，測試留到一段調整結束再看。
-- 不要改 `seed` 來碰一個比較好看的測試分數。換種子等於換了一份考卷。
-- `predict.py` 常常回答 `unknown`：門檻太高，或是這張照片和訓練時差很多。可以把 `predict.unknown_threshold` 降到 0.45 看看，也可以看印出來的百分比。
-- 幾乎全部猜成同一類：先確認每個資料夾裡都有照片，而且那些檔案打得開。再把 `train.full_epochs` 加長。CPU 很慢時把 `model.name` 改成 `mobilenet_v3_small`。
-
-`test_metrics.json` 裡的 `accuracy` 是 0 到 1 的小數。0.99 就是 99%。
-
-## 設定檔
-
-常用的開關在 `config.yaml`，檔案裡有中文註解。
-
-| 設定 | 作用 |
-| --- | --- |
-| `model.name` | `convnext_tiny`（預設）、`efficientnet_v2_s`、`vit_b_16`、`mobilenet_v3_small` |
-| `train.head_epochs` / `train.full_epochs` | 兩階段各最多練幾輪。驗證分數還在往上、卻已經停了，就把 `full_epochs` 加大 |
-| `train.batch_size` | 顯示卡記憶體不夠就改成 8 或 4 |
-| `train.head_lr` / `train.full_lr` | 第一階段、第二階段的學習率 |
-| `predict.unknown_threshold` | 低於這個信心就回答 unknown |
-| `eval.tta` | 測試時多看一次水平翻轉再平均。挑選模型時不會用 |
-| `image_size` | 預設 224。ViT 請維持 224 |
-| `seed` | 切分和訓練的隨機種子 |
-| `duplicates.max_distance` | 越小越嚴格。警告把明顯不同的照片也算進去時，改成 3 |
-
-命令列可以暫時蓋過一個值，不必改檔案：
-
-```bash
-python train.py --data /path/to/photos --set train.full_epochs=25
-```
-
-`config.smoke.yaml` 只給合成圖片和自動測試。不要拿它訓練真實照片。
-
-## 訓練很慢或出錯
-
-CPU 上每一輪可能要幾分鐘，有顯示卡會快很多。畫面有在印 epoch，就代表還在跑。
-
-- `CUDA out of memory`：把 `train.batch_size` 調小。
-- Mac 出現 MPS 錯誤：把 `device` 改成 `cpu`。
-- 讀不到 HEIC：安裝 `pillow-heif`，或改存 JPEG。
-- 程式說某一類少於 3 張：自動切分時每一類至少要 3 張，訓練、驗證、測試才都有照片。
-- 混淆矩陣的中文資料夾名變成空心方塊：系統沒有中文字型。資料夾用英文名最省事。
-
-## 輸出成 ONNX
-
-平常辨識一張照片用 `predict.py` 就好。之後若要接到別的程式：
-
-```bash
-python export_onnx.py
-```
-
-會在模型旁邊寫出 `model.onnx` 和 `model.labels.json`。輸出是機率，順序跟 labels 檔案一樣，加總是 1。輸入是已經縮放、並用 ImageNet 平均值與標準差正規化過的張量，形狀是 `[batch, 3, 224, 224]`（邊長跟訓練時的 `image_size` 相同）。
-
-## 程式怎麼排
-
-給想讀程式的人。註解是英文短句，說明為什麼要有這一步。
-
-| 檔案 | 內容 |
-| --- | --- |
-| `train.py` `evaluate.py` `predict.py` | 你執行的指令 |
-| `src/data.py` | 找照片、切分、EXIF |
-| `src/duplicates.py` | 近重複照片檢查 |
-| `src/transforms.py` | 訓練時的隨機增強，以及測試時的固定裁切 |
-| `src/model.py` | 預訓練骨幹，換成你的類別數 |
-| `src/engine.py` | 兩階段訓練。測試集在選完模型之後才評分 |
-| `src/reporting.py` | 正確率、混淆矩陣、猜錯清單 |
-| `tests/test_smoke.py` | 用合成圖片把整條流程跑完 |
-
-GitHub Actions（`.github/workflows/smoke.yml`）會在 CPU 上跑 `pytest`，不需要你的照片。
+分類不適合「一張照片很多東西」的題目。那種題目請用上面的偵測。
 
 ## English
 
-Train a classifier on phone photos of everyday objects.
+The primary task is multi-object detection. One photo may contain many things; the model returns a box, a class, and a confidence for each.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python train.py --data /path/to/photos
-python evaluate.py
-python predict.py image.jpg
+python detect_train.py --data /path/to/dataset
+python detect_eval.py
+python detect_predict.py image.jpg
 ```
 
-Put images in `photos/<class_name>/*.jpg`. If `train/`, `val/`, and `test/` already exist, those folders are used as-is. Otherwise the tool makes a stratified 70/15/15 split with a fixed seed. iPhone EXIF orientation is applied on load. HEIC needs `pip install pillow-heif` or a JPEG export.
+Label boxes in [Roboflow](https://roboflow.com) (Object Detection project, export YOLO v8 or YOLOv5 PyTorch) or in Label Studio (bounding-box template, export JSON next to the images). A folder that already has `data.yaml` plus `images/` and `labels/` works as-is. Existing train/val/test folders are kept. One unlabeled-by-split pool is split 70/15/15 with a fixed seed. iPhone EXIF orientation is baked into the pixels; normalized boxes stay as drawn on the upright view.
 
-The number that matters is `Held-out test accuracy`. Those images were not used for training and were not used to pick the checkpoint. A near-duplicate warning means almost the same photo leaked across splits; delete the copies and train again. `predict.py` prints top-k probabilities and says `unknown` when confidence is below `predict.unknown_threshold` (default 0.60).
+Detection is not one accuracy number. Read **mAP50** (found the object), **mAP50-95** (the box also fits tightly), **precision** (few extra boxes), and **recall** (few misses). On a small set of distinct objects with careful labels, test mAP50 around 0.85–0.95 is a strong result. Test mAP50-95 around 0.60–0.80 is already good on real phone photos. A plan that starts near that range is about 150–300+ images in which each class appears, and several hundred box instances per class, with different backgrounds, lighting, occlusion, and overlap. The test split is not used to train or to pick `best.pt`.
 
-For about 99% on 5–20 visually distinct classes, aim for 80–150 varied photos per class (up to 200 when classes look alike): different angles, distances, lighting, and backgrounds. Burst shots of the same frame do not count as new information. Console text is English; the sections above explain each term in Traditional Chinese.
-
-Try the pipeline before your photos are ready:
-
-```bash
-python scripts/make_synthetic_data.py --out data/synthetic
-python train.py --data data/synthetic --config config.smoke.yaml
-python -m pytest tests -q
-```
-
-`config.smoke.yaml` is only for that synthetic run. Real photos use `config.yaml` and a pretrained backbone (`convnext_tiny` by default). The device is chosen automatically: CUDA, then Apple MPS, then CPU. `python export_onnx.py` writes probabilities plus a label list.
+`detect_predict.py video.mp4` and `detect_predict.py 0` run on a video or the webcam. Single-label classification is still available with `train.py`, `evaluate.py`, and `predict.py` when each photo is only one object.

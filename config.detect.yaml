@@ -1,0 +1,58 @@
+# 偵測訓練的結果（模型、資料集複本、測試報表）會放在這裡。
+output_dir: runs/detect
+
+# yolo11n 最小也最快。照片多、東西又小時可以改成 yolo11s 或 yolo11m。
+# 也可以用 yolov8n.pt、yolov8s.pt。第一次訓練會下載 COCO 預訓練權重。
+# 結尾是 .yaml（例如 yolo11n.yaml）代表從零開始，不下載權重，只給測試用。
+model: yolo11n.pt
+
+# 輸入邊長。640 是 YOLO 的常用值。顯示卡記憶體不夠就改成 512 或 416。
+imgsz: 640
+
+# 最多訓練幾輪。驗證 mAP 若提早停住，patience 會先停。
+epochs: 80
+batch: 16
+
+# auto：有 NVIDIA GPU 用 cuda，有 Apple GPU 用 mps，否則用 cpu。
+device: auto
+
+# 切分與訓練共用這個種子。不要為了把測試分數調好看而一直改它。
+seed: 42
+
+# 驗證 mAP 連續這麼多輪沒有變好就停止。0 表示不要提早停。
+patience: 20
+
+# 讀照片的背景程序。出錯就維持 0。
+workers: 0
+
+# predict 與「漏掉 / 多框」清單用的信心門檻。mAP 本身會掃過整條信心曲線，不受這個數字影響。
+conf: 0.25
+
+# 非最大抑制：重疊很高的框會被收成一個。
+iou: 0.70
+
+# 和正確框的 IoU 達到這個值，才算框到同一個物件。
+match_iou: 0.50
+
+# 只有「一個池子的照片」時才會用到。已經有 train/val/test 就照原資料夾。
+split:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+
+# 手機原圖很大。寫進訓練資料夾前先把長邊縮到這個像素。0 表示不縮小。
+# 框是相對比例，縮小不會改框的位置。
+max_side: 1600
+
+duplicates:
+  enabled: true
+  hash_size: 8
+  # 距離越小越像。6 大約是連拍。明顯不同的照片也被算進去時，改成 3。
+  max_distance: 6
+
+train:
+  # 1.0 會把四張照片拼在一起，讓模型習慣物件出現在奇怪的位置。
+  mosaic: 1.0
+  # 混合精度只在 NVIDIA GPU 上開啟。
+  amp: true
+  plots: true
