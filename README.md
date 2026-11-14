@@ -223,6 +223,10 @@ python -m pytest tests -q
 
 GitHub Actions 會在 CPU 上跑同一套測試，不需要你的照片。
 
+## 在 Kaggle 上訓練 COCO 的 YOLO11x
+
+這不是手機照片的預設流程。手機偵測的預設模型仍是 `yolo11m`。若要在 Kaggle 上把最大的 YOLO11x 拿到 COCO 2017 上訓練，用 [`kaggle/train_coco_yolo11x.ipynb`](kaggle/train_coco_yolo11x.ipynb)，說明在 [`kaggle/README.md`](kaggle/README.md)。筆記本的預設是從官方預訓練的 `yolo11x.pt` 微調。從 `yolo11x.yaml` 從零訓練要很久：以 Kaggle 每週大約 30 小時的 GPU 額度來算，是很多週，不是一個 12 小時的工作階段。
+
 ## 訓練時會看到什麼
 
 | 畫面上的字 | 意思 |
@@ -316,3 +320,5 @@ Label boxes in [Roboflow](https://roboflow.com) (Object Detection project, expor
 Detection is not one accuracy number. Read **mAP50** (found the object), **mAP50-95** (the box also fits tightly), **precision** (few extra boxes), and **recall** (few misses). On a small set of distinct objects with careful labels, test mAP50 around 0.85–0.95 is a strong result. Test mAP50-95 around 0.60–0.80 is already good on real phone photos. With a fixed background, 50 to 100 photos per class is usually enough. The training photos need the same background and lighting as real use. Vary the object's position, distance, angle, and how much of it is covered. The test split is not used to train or to pick `best.pt`.
 
 `detect_predict.py video.mp4` and `detect_predict.py 0` run on a video or the webcam. Single-label classification is still available with `train.py`, `evaluate.py`, and `predict.py` when each photo is only one object.
+
+Training YOLO11x on COCO 2017 in a Kaggle notebook is a separate path: [`kaggle/train_coco_yolo11x.ipynb`](kaggle/train_coco_yolo11x.ipynb) and [`kaggle/README.md`](kaggle/README.md). The phone-photo default stays `yolo11m`. The notebook defaults to fine-tuning official `yolo11x.pt`. Training from scratch (`yolo11x.yaml`) takes many weeks of Kaggle's about-30-hour weekly GPU quota, not one 12-hour session.
