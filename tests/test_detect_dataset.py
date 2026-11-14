@@ -26,13 +26,26 @@ def _config() -> dict:
     return load_config(ROOT / "config.detect.yaml")
 
 
-def test_default_detector_is_yolo11x_and_lists_the_smaller_models():
+def test_default_detector_is_yolo11m_and_keeps_the_other_sizes():
+    from detect_train import option_passed, resolve_model
+    from src.detect.engine import DEFAULT_MODEL
+
     text = (ROOT / "config.detect.yaml").read_text(encoding="utf-8")
-    assert "model: yolo11x.pt" in text
-    for name in ("yolo11l.pt", "yolo11m.pt", "yolo11s.pt", "yolo11n.pt", "yolov8n.pt"):
+    assert "model: yolo11m.pt" in text
+    assert "model: yolo11x.pt" not in text
+    for name in ("yolo11n.pt", "yolo11s.pt", "yolo11l.pt", "yolo11x.pt", "yolov8n.pt"):
         assert name in text
-    assert load_config(ROOT / "config.detect.yaml")["model"] == "yolo11x.pt"
+    assert DEFAULT_MODEL == "yolo11m.pt"
+    assert load_config(ROOT / "config.detect.yaml")["model"] == DEFAULT_MODEL
     assert load_config(ROOT / "config.detect.yaml")["batch"] == -1
+    # A smoke config names its own tiny model. The CLI default must not replace it
+    # unless the user actually passed --model.
+    assert resolve_model("yolo11n.yaml", DEFAULT_MODEL, passed=False) == "yolo11n.yaml"
+    assert resolve_model(DEFAULT_MODEL, "yolo11x.pt", passed=True) == "yolo11x.pt"
+    assert resolve_model(DEFAULT_MODEL, "yolo11n.pt", passed=True) == "yolo11n.pt"
+    assert option_passed("--model", ["--data", "photos", "--model", "yolo11s.pt"])
+    assert option_passed("--model", ["--model=yolo11l.pt"])
+    assert not option_passed("--model", ["--data", "photos", "--config", "config.detect.smoke.yaml"])
 
 
 def test_auto_batch_is_only_used_on_nvidia():

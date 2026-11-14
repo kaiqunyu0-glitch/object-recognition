@@ -2,7 +2,7 @@
 
 這個專案的主要功能是**偵測**：一張照片裡可以同時有很多不同的東西，模型要把它們都找出來，每個物件一個邊界框、一個類別、一個信心。
 
-它用 Ultralytics YOLO 在你自己的標註上微調。預設模型是 **YOLO11x**（`yolo11x.pt`，已在 COCO 上預訓練，權重大約 110MB）。這是這一系列裡最大的模型，CPU 上會很慢，建議用 NVIDIA 顯示卡訓練。有顯示卡用 CUDA，Apple 晶片用 MPS，否則用 CPU。
+它用 Ultralytics YOLO 在你自己的標註上微調。預設模型是 **YOLO11m**（`yolo11m.pt`，已在 COCO 上預訓練，權重大約 40MB）。背景和燈光固定、每一類照片又不多時，更大的 `yolo11l` 和 `yolo11x` 容易把訓練照片背下來，所以預設用中型的 m。`yolo11n`、`yolo11s`、`yolo11l`、`yolo11x` 仍可用 `--model` 換。有顯示卡用 CUDA，Apple 晶片用 MPS，否則用 CPU。
 
 同一份程式裡也留著「一張照片只回答一個類別」的分類流程。那個流程在最後一節。你現在要做的是偵測，請從下面的標註步驟開始。
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 有 NVIDIA 顯示卡時，先到 [pytorch.org](https://pytorch.org) 選對應 CUDA 版本，裝好 `torch` 和 `torchvision`，再執行 `pip install -r requirements.txt`。
 
-每次開新的終端機都要再啟動一次 `.venv`。第一次訓練會下載 YOLO11x 的 COCO 預訓練權重，大約 110MB，需要網路。
+每次開新的終端機都要再啟動一次 `.venv`。第一次訓練會下載 YOLO11m 的 COCO 預訓練權重，大約 40MB，需要網路。
 
 iPhone 的 HEIC 可以在照片 App 輸出成 JPEG，或另外安裝：
 
@@ -117,26 +117,25 @@ CVAT 也可以。匯出 **YOLO 1.1**，把解壓後的資料夾路徑傳給 `--d
 
 ## 要多少照片、多少框
 
-偵測比分類吃資料。分類只要整張照片一個答案；偵測要在各種背景裡把每一個物件的位置也學對。
+背景固定時，每一類 50 到 100 張照片通常就夠。訓練照片的背景和燈光要和真正使用時一樣。模型會把桌子、牆、燈光一起記進去；換一個背景或換一種燈，辨識就會變差。
+
+物件本身仍要有變化，否則它只記得一種擺法：
+
+- 有時近、有時遠，有時貼在畫面邊緣
+- 角度不要只有一種
+- 有時被手或其他東西遮住一部分
+- 有時兩個物件重疊或靠在一起
+- 不要用連拍湊數量。幾乎一樣的照片若被分到訓練和測試，分數會灌水
 
 | 目標 | 大約需要 |
 | --- | --- |
-| 先把流程跑通 | 每類 30 到 50 張照片 |
-| 認真做一個小場景（5 到 15 類、物件長得差很多） | 每類 150 到 300 張以上「有這個物件出現」的照片，而且每類幾百個框 |
-| 兩類長得很像，或物件常常很小、常常被擋住 | 再往上加，而且要刻意拍那些難的情況 |
+| 先把流程跑通 | 每類大約 30 張，背景和燈光跟之後使用時相同 |
+| 固定背景、固定燈光 | 每類 50 到 100 張通常就夠 |
+| 兩類長得很像，或物件常常很小、常常被擋住 | 再多拍那些難的情況，背景和燈光仍要和真正使用時一樣 |
 
-一張照片裡有 3 個杯子，算 3 個杯子實例，但背景仍是同一張。實例數要夠，場景也要夠。
+一張照片裡有 3 個杯子，算 3 個杯子實例，但背景仍是同一張。實例數要夠。
 
-每一類都要有這些變化，否則模型只記得你的桌子：
-
-- 不同背景、不同房間、室內和窗邊
-- 白天、日光燈、晚上
-- 物件有時近、有時遠，有時貼在畫面邊緣
-- 有時被手或其他東西遮住一部分
-- 有時兩個物件重疊或靠在一起
-- 不要只有一種角度
-
-框的品質和數量一樣重要。框歪了、漏了一個、類別點錯了，模型都會學進去。
+框的品質和數量一樣重要。框歪了、漏了一個、類別點錯了，模型都會學進去。資料不多、背景又固定時，更大的 `yolo11l` 和 `yolo11x` 容易把這幾十張照片背下來，所以預設是 `yolo11m`。
 
 ## 分數怎麼讀才誠實
 
@@ -204,7 +203,7 @@ python detect_predict.py 0
 python detect_train.py --data /path/to/dataset --model yolo11n.pt
 ```
 
-預設是 `yolo11x`。只有 CPU、或顯示卡記憶體不夠時，用 `--model` 換成較小的模型。`yolo11n.pt` 最小最快，然後是 `yolo11s.pt`、`yolo11m.pt`、`yolo11l.pt`。`yolov8n.pt` 也可以。改 `config.detect.yaml` 裡的 `model` 效果一樣。
+預設是 `yolo11m`。背景固定、資料不多時，不要把預設換成更大的 `yolo11l` 或 `yolo11x`，它們容易記住訓練照片。要用別的大小，傳 `--model yolo11n.pt`、`yolo11s.pt`、`yolo11l.pt` 或 `yolo11x.pt`。`yolov8n.pt` 也可以。改 `config.detect.yaml` 裡的 `model` 效果一樣。只有 CPU、或想再快一點時，用 `yolo11n.pt` 或 `yolo11s.pt`。
 
 `0` 是預設攝影機。影片或攝影機按 Ctrl+C 停止。每張照片會印出物件、信心和框，並把畫好框的圖存到 `runs/detect/predictions/`。
 
@@ -255,7 +254,7 @@ recall:    0.850
 
 某一類的 recall 很低：多拍那種它找不到的角度和遮擋，並檢查是不是漏標。某一類的 precision 很低：看看 `errors.csv` 裡的 false_positive，常常是背景裡有長得很像的東西沒被標成別的類，或是框得太鬆。
 
-YOLO11x 在 CPU 上每一輪可能要很久，建議有 NVIDIA 顯示卡再訓練這個預設模型。只有 CPU 時改成較小的模型：
+預設的 YOLO11m 在 CPU 上每一輪仍會偏慢。只有 CPU 時改成較小的模型：
 
 ```bash
 python detect_train.py --data /path/to/dataset --model yolo11n.pt
@@ -269,7 +268,7 @@ python detect_train.py --data /path/to/dataset --model yolo11n.pt
 
 | 設定 | 作用 |
 | --- | --- |
-| `model` | 預設 `yolo11x.pt`（約 110MB）。也可選 `yolo11l.pt`、`yolo11m.pt`、`yolo11s.pt`、`yolo11n.pt`、`yolov8n.pt` |
+| `model` | 預設 `yolo11m.pt`（約 40MB）。也可選 `yolo11n.pt`、`yolo11s.pt`、`yolo11l.pt`、`yolo11x.pt`、`yolov8n.pt` |
 | `imgsz` | 輸入邊長，預設 640 |
 | `epochs` / `patience` | 最多幾輪；驗證 mAP 多久沒進步就停 |
 | `batch` | 預設 `-1`：NVIDIA GPU 自動選張數。CPU / Mac 會用 2。想固定就寫 4 或 8 |
@@ -295,7 +294,7 @@ python predict.py image.jpg
 
 ## English
 
-The primary task is multi-object detection. One photo may contain many things; the model returns a box, a class, and a confidence for each. The default weights are **YOLO11x** (`yolo11x.pt`, about 110MB, pretrained on COCO). That model is slow on CPU and is meant for an NVIDIA GPU. Smaller choices are `yolo11l.pt`, `yolo11m.pt`, `yolo11s.pt`, `yolo11n.pt`, and `yolov8n.pt`:
+The primary task is multi-object detection. One photo may contain many things; the model returns a box, a class, and a confidence for each. The default weights are **YOLO11m** (`yolo11m.pt`, about 40MB, pretrained on COCO). On a fixed background with only a small set of photos, the larger `yolo11l` and `yolo11x` models tend to memorize the training images, so the default is m. `yolo11n.pt`, `yolo11s.pt`, `yolo11l.pt`, and `yolo11x.pt` stay selectable with `--model`, and so does `yolov8n.pt`:
 
 ```bash
 python detect_train.py --data /path/to/dataset --model yolo11n.pt
@@ -314,6 +313,6 @@ python detect_predict.py image.jpg
 
 Label boxes in [Roboflow](https://roboflow.com) (Object Detection project, export YOLO v8 or YOLOv5 PyTorch) or in Label Studio (bounding-box template, export JSON next to the images). A folder that already has `data.yaml` plus `images/` and `labels/` works as-is. Existing train/val/test folders are kept. One unlabeled-by-split pool is split 70/15/15 with a fixed seed. iPhone EXIF orientation is baked into the pixels; normalized boxes stay as drawn on the upright view.
 
-Detection is not one accuracy number. Read **mAP50** (found the object), **mAP50-95** (the box also fits tightly), **precision** (few extra boxes), and **recall** (few misses). On a small set of distinct objects with careful labels, test mAP50 around 0.85–0.95 is a strong result. Test mAP50-95 around 0.60–0.80 is already good on real phone photos. A plan that starts near that range is about 150–300+ images in which each class appears, and several hundred box instances per class, with different backgrounds, lighting, occlusion, and overlap. The test split is not used to train or to pick `best.pt`.
+Detection is not one accuracy number. Read **mAP50** (found the object), **mAP50-95** (the box also fits tightly), **precision** (few extra boxes), and **recall** (few misses). On a small set of distinct objects with careful labels, test mAP50 around 0.85–0.95 is a strong result. Test mAP50-95 around 0.60–0.80 is already good on real phone photos. With a fixed background, 50 to 100 photos per class is usually enough. The training photos need the same background and lighting as real use. Vary the object's position, distance, angle, and how much of it is covered. The test split is not used to train or to pick `best.pt`.
 
 `detect_predict.py video.mp4` and `detect_predict.py 0` run on a video or the webcam. Single-label classification is still available with `train.py`, `evaluate.py`, and `predict.py` when each photo is only one object.

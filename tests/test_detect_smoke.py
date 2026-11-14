@@ -25,6 +25,10 @@ def test_detection_help():
     for script in ("detect_train.py", "detect_eval.py", "detect_predict.py"):
         result = run([sys.executable, str(ROOT / script), "--help"])
         assert "usage" in result.stdout.lower()
+        assert "yolo11m.pt" in result.stdout
+    train_help = run([sys.executable, str(ROOT / "detect_train.py"), "--help"]).stdout
+    for name in ("yolo11n.pt", "yolo11s.pt", "yolo11l.pt", "yolo11x.pt"):
+        assert name in train_help
 
 
 def test_detection_pipeline(tmp_path: Path):

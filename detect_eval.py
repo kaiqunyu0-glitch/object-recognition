@@ -20,15 +20,22 @@ if str(ROOT) not in sys.path:
 
 from src.cli import run_main
 from src.config import load_config
-from src.detect.engine import evaluate_detector
+from src.detect.engine import DEFAULT_MODEL, evaluate_detector
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Report held-out test mAP, precision, recall, and mistakes.",
+        description=(
+            "Report held-out test mAP, precision, recall, and mistakes. "
+            f"detect_train.py defaults to {DEFAULT_MODEL}; this command scores that run's best.pt."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--config", default="config.detect.yaml")
+    parser.add_argument(
+        "--config",
+        default="config.detect.yaml",
+        help=f"YAML settings file. The default detection model is {DEFAULT_MODEL}.",
+    )
     parser.add_argument("--output-dir", default=None, help="Folder written by detect_train.py.")
     parser.add_argument("--checkpoint", default=None, help="Defaults to the best.pt from training.")
     parser.add_argument("--conf", type=float, default=None, help="Confidence for the miss/false-positive list.")

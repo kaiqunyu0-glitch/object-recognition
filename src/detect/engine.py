@@ -29,13 +29,16 @@ from src.device import describe_device, get_device
 from src.duplicates import find_cross_split_duplicates, report_duplicates
 from src.utils import write_json
 
+# Medium COCO weights. Larger YOLO11 models memorize a small fixed-background set.
+DEFAULT_MODEL = "yolo11m.pt"
+
 
 def resolve_train_batch(batch, yolo_device: str) -> int | float:
     """Use Ultralytics AutoBatch on NVIDIA GPUs. CPU and MPS get a small fixed batch.
 
     ``batch=-1`` asks Ultralytics to profile the GPU and pick a size that fits.
-    That profiler does not run on CPU or Apple MPS; YOLO11x at batch 16 would
-    also be a poor default there, so those devices use 2 images at a time.
+    That profiler does not run on CPU or Apple MPS. A large model at batch 16
+    would also be a poor default there, so those devices use 2 images at a time.
     A positive ``batch`` is kept as written.
     """
     if isinstance(batch, str) and batch.strip().lower() in {"auto", "-1"}:
@@ -47,7 +50,7 @@ def resolve_train_batch(batch, yolo_device: str) -> int | float:
             return numeric
         print(
             "Auto batch only runs on an NVIDIA GPU. Using batch=2 on this device. "
-            "yolo11x is slow on CPU; --model yolo11n.pt or yolo11s.pt is a better fit there.",
+            "On CPU, yolo11n.pt or yolo11s.pt is faster than the default yolo11m.pt.",
             flush=True,
         )
         return 2
@@ -143,7 +146,7 @@ def fit_detector(cfg: dict, data_root: Path) -> Path:
     else:
         print("Near-duplicate check: skipped (duplicates.enabled is false).", flush=True)
 
-    model_name = str(cfg["model"])
+    model_name = str(cfg.get("model") or DEFAULT_MODEL)
     yolo_device = ultralytics_device(str(cfg.get("device", "auto")))
     train_batch = resolve_train_batch(cfg["batch"], yolo_device)
     use_amp = bool(cfg["train"]["amp"]) and yolo_device == "0"

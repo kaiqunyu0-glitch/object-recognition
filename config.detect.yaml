@@ -1,12 +1,12 @@
 # 偵測訓練的結果（模型、資料集複本、測試報表）會放在這裡。
 output_dir: runs/detect
 
-# 預設是 yolo11x，準確度最高，權重大約 110MB。
-# CPU 上很慢，建議用 NVIDIA 顯示卡訓練。
-# 想換小一點的模型：yolo11l.pt、yolo11m.pt、yolo11s.pt、yolo11n.pt，或 yolov8n.pt。
+# 預設是 yolo11m，COCO 預訓練，權重大約 40MB。
+# 背景和燈光固定、每類只有幾十到一百張時，更大的 yolo11l、yolo11x 容易把訓練照片背下來。
+# 仍可換成 yolo11n.pt、yolo11s.pt、yolo11l.pt、yolo11x.pt，或 yolov8n.pt。
 # 也可以下指令：python detect_train.py --data ... --model yolo11n.pt
 # 結尾是 .yaml（例如 yolo11n.yaml）代表從零開始，不下載權重，只給自動測試用。
-model: yolo11x.pt
+model: yolo11m.pt
 
 # 輸入邊長。640 是 YOLO 的常用值。顯示卡記憶體不夠就改成 512 或 416。
 imgsz: 640
