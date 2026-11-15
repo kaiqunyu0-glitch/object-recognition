@@ -227,6 +227,8 @@ GitHub Actions 會在 CPU 上跑同一套測試，不需要你的照片。
 
 這不是手機照片的預設流程。手機偵測的預設模型仍是 `yolo11m`。若要在 Kaggle 上把最大的 YOLO11x 拿到 COCO 2017 上訓練，用 [`kaggle/train_coco_yolo11x.ipynb`](kaggle/train_coco_yolo11x.ipynb)，說明在 [`kaggle/README.md`](kaggle/README.md)。筆記本的預設是從官方預訓練的 `yolo11x.pt` 微調。從 `yolo11x.yaml` 從零訓練要很久：以 Kaggle 每週大約 30 小時的 GPU 額度來算，是很多週，不是一個 12 小時的工作階段。
 
+西洋棋子的小試跑在 [`kaggle/train_chess_yolo11.ipynb`](kaggle/train_chess_yolo11.ipynb)。資料是公開、CC BY 4.0 的 [LibreYOLO/chess-pieces-mjzgj](https://huggingface.co/datasets/LibreYOLO/chess-pieces-mjzgj)，train 202、valid 58、test 29，13 個類別。
+
 ## 訓練時會看到什麼
 
 | 畫面上的字 | 意思 |
@@ -322,3 +324,5 @@ Detection is not one accuracy number. Read **mAP50** (found the object), **mAP50
 `detect_predict.py video.mp4` and `detect_predict.py 0` run on a video or the webcam. Single-label classification is still available with `train.py`, `evaluate.py`, and `predict.py` when each photo is only one object.
 
 Training YOLO11x on COCO 2017 in a Kaggle notebook is a separate path: [`kaggle/train_coco_yolo11x.ipynb`](kaggle/train_coco_yolo11x.ipynb) and [`kaggle/README.md`](kaggle/README.md). The phone-photo default stays `yolo11m`. The notebook defaults to fine-tuning official `yolo11x.pt`. Training from scratch (`yolo11x.yaml`) takes many weeks of Kaggle's about-30-hour weekly GPU quota, not one 12-hour session.
+
+A smaller chess-piece pilot is in [`kaggle/train_chess_yolo11.ipynb`](kaggle/train_chess_yolo11.ipynb). It fine-tunes YOLO11 on the public CC BY 4.0 set [LibreYOLO/chess-pieces-mjzgj](https://huggingface.co/datasets/LibreYOLO/chess-pieces-mjzgj) (202/58/29 images, 13 classes).

@@ -157,3 +157,34 @@ Kaggle's notebook docs still list a P100 (1 GPU, 4 CPU cores, about 29 GB RAM) a
 `PATIENCE = 15` is Ultralytics early stopping on fitness. In Ultralytics 8.4 that fitness is validation mAP50-95. The callback `AcceptableResultStop.on_fit_epoch_end` in `src/detect/coco_early_stop.py` also stops when total validation loss (`box + cls + dfl`) improves by less than `LOSS_MIN_DELTA` (0.01) for `LOSS_PATIENCE` epochs (15), when mAP50-95 reaches `MAP_TARGET` (0.55, near the published YOLO11x number of about 0.547; set `None` to disable; 0.50 would stop a pretrained fine-tune almost immediately), or when the 11-hour budget is used. The callback sets `trainer.stop` and caps `epochs` only after that epoch's validation and checkpoint write, so `best.pt` and `last.pt` are kept.
 
 On two GPUs the callback decides on rank 0. Ultralytics 8.4 broadcasts `trainer.stop` after `on_fit_epoch_end` and pickles callbacks into the DDP workers. If that broadcast or pickle fails on a newer build, use one GPU (`device=0`) or patience only.
+
+## 西洋棋子偵測試跑
+
+筆記本是 [`train_chess_yolo11.ipynb`](train_chess_yolo11.ipynb)。這是另一個小試跑，不是 COCO，也不是手機照片的預設流程。
+
+資料是 Hugging Face 上的公開快照 [`LibreYOLO/chess-pieces-mjzgj`](https://huggingface.co/datasets/LibreYOLO/chess-pieces-mjzgj)。Hub 資料卡的授權欄位是 **CC BY 4.0**，快照裡的 `data.yaml` 也寫著 `roboflow.license: CC BY 4.0`。上游頁面是 [Roboflow 100 / chess-pieces-mjzgj](https://universe.roboflow.com/roboflow-100/chess-pieces-mjzgj/dataset/1)。下載不需要 Kaggle、Roboflow 或 Hugging Face 帳號。2026-11-15 對這份公開快照點過數：train 202、valid 58、test 29，圖都是 640×640 JPEG，標註是一般 YOLO 框（一行五個數）。
+
+類別有 13 個，不是剛好 12 個。12 個是黑白國王、皇后、城堡、主教、騎士、兵。第 0 類 `bishop` 是來源裡多出來的一個框（整份資料只有 1 個），標註編號就是這個順序，不要自行重排。另一個 12 類的 Hub 轉檔 `dopaul/chess-pieces-roboflow` 標註是空的，所以不用。
+
+本機下載：
+
+```bash
+pip install huggingface_hub
+python scripts/download_chess.py --out data/chess
+```
+
+`data/` 被 gitignore，照片和權重都不要提交。
+
+筆記本預設 `MODE = "finetune"`，`MODEL_SIZE = "x"`，也就是官方 `yolo11x.pt`。`n`、`s`、`m`、`l` 可以改。`scratch` 才改用對應的 `yolo11{size}.yaml`。停止條件沿用 COCO 筆記本的 `patience` 和 `AcceptableResultStop`。這份資料很小，`MAP_TARGET = 0.50` 的意思是「試跑可以收了」，不是 COCO 公布的 0.547。權重寫到 `/kaggle/working`。資料只有大約十幾 MB，放在 `/kaggle/temp/chess`，工作階段結束會消失，下一輪再下載即可。
+
+289 張圖和 COCO 的 11 萬張不是同一個量級。T4 x2 上用 yolo11x 微調，80 輪的上限很大機會一個 12 小時工作階段就夠，也可能更早被 early stopping 停掉。這是估計，不是實測。COCO 那張每輪 1.1 小時的表不要拿來套這份資料。
+
+### English
+
+[`train_chess_yolo11.ipynb`](train_chess_yolo11.ipynb) is a separate chess-piece pilot. The dataset is the public Hub snapshot [LibreYOLO/chess-pieces-mjzgj](https://huggingface.co/datasets/LibreYOLO/chess-pieces-mjzgj), license **CC BY 4.0** on the dataset card and in `roboflow.license`. Upstream: [Roboflow 100 chess-pieces-mjzgj](https://universe.roboflow.com/roboflow-100/chess-pieces-mjzgj/dataset/1). No Kaggle, Roboflow, or Hugging Face account is required. Counts checked on the public snapshot on 2026-11-15: train 202, valid 58, test 29, all 640×640 JPEG, standard five-number YOLO boxes.
+
+There are 13 classes, not 12. Twelve are the black and white king, queen, rook, bishop, knight, and pawn. Class 0, `bishop`, is one leftover box in the source. Do not renumber them. The 12-class mirror `dopaul/chess-pieces-roboflow` has empty annotations, so it is not used.
+
+`python scripts/download_chess.py --out data/chess` after `pip install huggingface_hub`. Do not commit `data/` or weights.
+
+The notebook defaults to `MODE = "finetune"` and `MODEL_SIZE = "x"` (official `yolo11x.pt`). `n`, `s`, `m`, and `l` stay selectable. `scratch` uses the matching `.yaml`. Early stopping reuses `patience` and `AcceptableResultStop`. `MAP_TARGET = 0.50` means “good enough for this pilot,” not the published COCO number. Checkpoints go to `/kaggle/working`. The set is about 15 MB, so one yolo11x fine-tune should fit in a single 12-hour T4 x2 session; that is an estimate, not a measurement, and the COCO hours-per-epoch table does not apply.

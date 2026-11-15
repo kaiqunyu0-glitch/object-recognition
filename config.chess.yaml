@@ -1,0 +1,39 @@
+# Chess-piece detection pilot.
+#
+# Public snapshot (no account, no API key):
+#   https://huggingface.co/datasets/LibreYOLO/chess-pieces-mjzgj
+# License: CC BY 4.0, stated on the Hub dataset card and in the snapshot's
+# data.yaml (`roboflow.license`). Upstream Roboflow 100 page:
+#   https://universe.roboflow.com/roboflow-100/chess-pieces-mjzgj/dataset/1
+# Export note in the snapshot: "chess pieces - v1 release-640", 289 images,
+# YOLOv8 boxes, resized to 640x640, no augmentation.
+#
+# Counts checked against that public snapshot: train 202, valid 58, test 29.
+# There are 13 classes. The 12 color-specific pieces are the ones this pilot
+# cares about. Class 0, "bishop", is a single box left in the source labels.
+# Do not renumber the list; the label ids match this order.
+#
+# Download (writes data/chess/ and does not belong in git):
+#   python scripts/download_chess.py --out data/chess
+# Train with the data.yaml that command writes, not with this file alone.
+# This file is the class list and the source record.
+
+path: .
+train: train/images
+val: valid/images
+test: test/images
+
+names:
+  0: bishop
+  1: black-bishop
+  2: black-king
+  3: black-knight
+  4: black-pawn
+  5: black-queen
+  6: black-rook
+  7: white-bishop
+  8: white-king
+  9: white-knight
+  10: white-pawn
+  11: white-queen
+  12: white-rook
