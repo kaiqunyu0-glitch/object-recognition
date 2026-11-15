@@ -111,13 +111,14 @@ Kaggle 一個 GPU 工作階段最長約 12 小時。`TIME_HOURS = 11` 會在被�
 
 兩層都開著。
 
-1. **Ultralytics patience**（預設 `PATIENCE = 15`，落在 10 到 20）。它看的是 fitness。Ultralytics 8.4 的偵測 fitness 就是驗證 **mAP50-95**（權重為 1）。較舊的文件曾用 `0.1 * mAP50 + 0.9 * mAP50-95`。patience 設成 0 會關掉這層。
-2. **自訂回呼** `AcceptableResultStop.on_fit_epoch_end`，規則在 `src/detect/coco_early_stop.py`：
-   - 驗證損失 `box + cls + dfl` 連續 `LOSS_PATIENCE` 輪（預設 15）都沒有下降至少 `LOSS_MIN_DELTA`（預設 0.01）。第一輪只建立基準，不算停滯。驗證沒跑到的輪不計入。
-   - 驗證 mAP50-95 達到 `MAP_TARGET`（預設 0.55）。官方 YOLO11x 在 COCO val 大約是 0.547，所以 0.55 的意思是「接近公布的水準」。設成 0.50 的話，預訓練微調可能第一輪驗證就停。設成 `None` 就關掉這個目標。
+1. **損失平台**是唯一預設會因為分數停下來的規則。總驗證損失是 box + cls + dfl。連續 `LOSS_PATIENCE` 輪（預設 15）每一輪都沒有比目前最好的損失再低至少 `LOSS_MIN_DELTA`（預設 0.01），才停。第一輪只建立基準。單獨一輪的回升或 mAP 暴跌不會停。
+2. **Ultralytics patience** 看的是 mAP50-95 fitness，不是損失。筆記本設 `PATIENCE = 0`，把這層關掉，避免 mAP 一好看就停。0 在 Ultralytics 裡代表不提早停。
+3. **自訂回呼** `AcceptableResultStop.on_fit_epoch_end` 在 `src/detect/coco_early_stop.py`：
+   - 上面的損失平台。
+   - `MAP_TARGET` 預設是 `None`。只有設成一個數字，而且驗證 mAP50-95 **大於或等於**那個數字時才會停。0.52 不會觸發 0.55。
    - 牆鐘超過 `TIME_HOURS`（預設 11）。
 
-優先順序是時間、然後 mAP、然後損失平台。回呼在該輪的驗證和 `save_model` **之後**才把 `trainer.stop` 設成 True，並把 `epochs` 收到剛剛跑完的那一輪，所以這一輪的驗證和存檔會留下，接著 Ultralytics 還會對 `best.pt` 做最後一次驗證。`last.pt` 和 `best.pt` 寫在 `/kaggle/working/coco-yolo11x/train/weights/`，筆記本再複製到 `/kaggle/working/last.pt` 和 `/kaggle/working/best.pt`。
+預設會停的原因是時間上限，然後才是損失平台。mAP 目標只有在 `MAP_TARGET` 不是 `None` 時才插在這兩者中間，而且必須 mAP50-95 大於或等於那個數字。回呼在該輪的驗證和 `save_model` **之後**才把 `trainer.stop` 設成 True，並把 `epochs` 收到剛剛跑完的那一輪，所以這一輪的驗證和存檔會留下，接著 Ultralytics 還會對 `best.pt` 做最後一次驗證。`last.pt` 和 `best.pt` 寫在 `/kaggle/working` 底下的權重目錄，筆記本再複製到 `/kaggle/working/last.pt` 和 `/kaggle/working/best.pt`。
 
 多 GPU：這個回呼只在 rank -1（單卡）和 rank 0 做決定。Ultralytics 8.4 會在 `on_fit_epoch_end` 之後把 `trainer.stop` 從 rank 0 廣播出去，而且啟動 DDP 時會把回呼 pickle 進每個 worker。若以後的版本不再廣播，或 pickle 失敗，就改 `GPU = "p100"` 或把 `DEVICE` 設成 `"0"` 只用一張卡，或者只靠 `patience`。
 
@@ -154,7 +155,7 @@ Kaggle's notebook docs still list a P100 (1 GPU, 4 CPU cores, about 29 GB RAM) a
 
 ### Stopping when the result is acceptable
 
-`PATIENCE = 15` is Ultralytics early stopping on fitness. In Ultralytics 8.4 that fitness is validation mAP50-95. The callback `AcceptableResultStop.on_fit_epoch_end` in `src/detect/coco_early_stop.py` also stops when total validation loss (`box + cls + dfl`) improves by less than `LOSS_MIN_DELTA` (0.01) for `LOSS_PATIENCE` epochs (15), when mAP50-95 reaches `MAP_TARGET` (0.55, near the published YOLO11x number of about 0.547; set `None` to disable; 0.50 would stop a pretrained fine-tune almost immediately), or when the 11-hour budget is used. The callback sets `trainer.stop` and caps `epochs` only after that epoch's validation and checkpoint write, so `best.pt` and `last.pt` are kept.
+The run stops when total validation loss (`box + cls + dfl`) fails to beat the best loss by `LOSS_MIN_DELTA` (0.01) for `LOSS_PATIENCE` epochs in a row (15), or when the 11-hour budget is used. `MAP_TARGET` defaults to off. A number stops only when mAP50-95 is greater than or equal to it. `PATIENCE = 0` disables Ultralytics' mAP-fitness stopper, which would otherwise end the run without looking at the loss. The callback sets `trainer.stop` only after that epoch's validation and checkpoint write, so `best.pt` and `last.pt` are kept.
 
 On two GPUs the callback decides on rank 0. Ultralytics 8.4 broadcasts `trainer.stop` after `on_fit_epoch_end` and pickles callbacks into the DDP workers. If that broadcast or pickle fails on a newer build, use one GPU (`device=0`) or patience only.
 
@@ -175,7 +176,9 @@ python scripts/download_chess.py --out data/chess
 
 `data/` 被 gitignore，照片和權重都不要提交。
 
-筆記本預設 `MODE = "finetune"`，`MODEL_SIZE = "x"`，也就是官方 `yolo11x.pt`。`n`、`s`、`m`、`l` 可以改。`scratch` 才改用對應的 `yolo11{size}.yaml`。停止條件沿用 COCO 筆記本的 `patience` 和 `AcceptableResultStop`。這份資料很小，`MAP_TARGET = 0.50` 的意思是「試跑可以收了」，不是 COCO 公布的 0.547。權重寫到 `/kaggle/working`。資料只有大約十幾 MB，放在 `/kaggle/temp/chess`，工作階段結束會消失，下一輪再下載即可。
+筆記本預設 `MODE = "finetune"`，`MODEL_SIZE = "x"`，也就是官方 `yolo11x.pt`。`n`、`s`、`m`、`l` 可以改。`scratch` 才改用對應的 `yolo11{size}.yaml`。停止條件和 COCO 筆記本相同：只看驗證損失有沒有連續 15 輪不再下降，`MAP_TARGET` 預設關掉，`PATIENCE = 0`。權重寫到 `/kaggle/working`。資料只有大約十幾 MB，放在 `/kaggle/temp/chess`，工作階段結束會消失，下一輪再下載即可。
+
+第一輪在 Kaggle 上跑到第 4 輪時，mAP50-95 曾掉到約 0.001，下一輪又回到約 0.52。這很像 warmup 結束或 AMP 的一輪不穩。AMP 仍開著，因為 T4 上的 yolo11x 需要它。那個下跌不會再把訓練停掉。
 
 289 張圖和 COCO 的 11 萬張不是同一個量級。T4 x2 上用 yolo11x 微調，80 輪的上限很大機會一個 12 小時工作階段就夠，也可能更早被 early stopping 停掉。這是估計，不是實測。COCO 那張每輪 1.1 小時的表不要拿來套這份資料。
 
@@ -187,4 +190,4 @@ There are 13 classes, not 12. Twelve are the black and white king, queen, rook, 
 
 `python scripts/download_chess.py --out data/chess` after `pip install huggingface_hub`. Do not commit `data/` or weights.
 
-The notebook defaults to `MODE = "finetune"` and `MODEL_SIZE = "x"` (official `yolo11x.pt`). `n`, `s`, `m`, and `l` stay selectable. `scratch` uses the matching `.yaml`. Early stopping reuses `patience` and `AcceptableResultStop`. `MAP_TARGET = 0.50` means “good enough for this pilot,” not the published COCO number. Checkpoints go to `/kaggle/working`. The set is about 15 MB, so one yolo11x fine-tune should fit in a single 12-hour T4 x2 session; that is an estimate, not a measurement, and the COCO hours-per-epoch table does not apply.
+The notebook defaults to `MODE = "finetune"` and `MODEL_SIZE = "x"` (official `yolo11x.pt`). `n`, `s`, `m`, and `l` stay selectable. `scratch` uses the matching `.yaml`. Stopping matches the COCO notebook: validation loss must stall for 15 epochs, `MAP_TARGET` is off, and `PATIENCE = 0`. Checkpoints go to `/kaggle/working`. The set is about 15 MB, so one yolo11x fine-tune should fit in a single 12-hour T4 x2 session; that is an estimate, not a measurement, and the COCO hours-per-epoch table does not apply. On the first Kaggle run, mAP50-95 fell to about 0.001 at epoch 4 and recovered to about 0.52 at epoch 5. That looks like warmup or AMP noise. AMP stays on. That dip no longer stops training.

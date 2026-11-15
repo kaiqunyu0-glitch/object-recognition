@@ -1,19 +1,19 @@
-"""Stop a COCO YOLO run when the result is good enough, or the session is almost over.
+"""Stop a YOLO run when validation loss has stalled, or the session is almost over.
 
-Ultralytics already stops on ``patience`` when fitness does not improve. In
-Ultralytics 8.4 that fitness is validation mAP50-95 (weight 1 on mAP50-95).
-This module adds two more rules, both decided by :func:`decide_stop`:
+The rule that is on by default is the loss plateau: total validation loss
+(box + cls + dfl) must improve by at least ``loss_min_delta`` against the best
+loss so far. One epoch that fails to do that increments a counter. Training
+stops only after ``loss_patience`` such epochs in a row. A single spike, or a
+dip in mAP, does not stop the run.
 
-* validation mAP50-95 reached a target
-* total validation loss (box + cls + dfl) improved by less than ``loss_min_delta``
-  for ``loss_patience`` epochs in a row
+An optional mAP50-95 target exists and is off unless ``map_target`` is set.
+It fires only when the metric is greater than or equal to that number.
+Ultralytics' own ``patience`` watches mAP fitness, not this loss, so the
+notebooks pass ``patience=0`` and leave the loss rule in charge.
 
-It also stops when the wall-clock budget is used up, so a 12-hour Kaggle
-session can save ``best.pt`` and ``last.pt`` instead of being killed.
-
-The decision itself does not touch a trainer. :meth:`AcceptableResultStop.on_fit_epoch_end`
-applies it by setting ``trainer.stop`` and capping ``trainer.epochs`` after
-that epoch's validation and checkpoint write.
+The 11-hour budget still stops the run so a 12-hour Kaggle session can save
+``best.pt`` and ``last.pt``. :meth:`AcceptableResultStop.on_fit_epoch_end`
+sets ``trainer.stop`` after that epoch's validation and checkpoint write.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class StopConfig:
 
     loss_min_delta: float = 0.01
     loss_patience: int = 15
-    map_target: float | None = 0.55
+    map_target: float | None = None
     time_budget_hours: float | None = 11.0
 
     def __post_init__(self) -> None:
@@ -107,8 +107,10 @@ def advance_plateau(state: PlateauState, loss: float | None, min_delta: float) -
 def decide_stop(state: PlateauState, observation: EpochObservation, config: StopConfig) -> StopDecision:
     """Decide whether this epoch is the last one.
 
-    Order: session time budget, then mAP50-95 target, then the loss plateau.
-    The returned state always includes this epoch's plateau update.
+    Order: session time budget, then an explicit mAP50-95 target, then the
+    loss plateau. ``map_target is None`` skips the mAP check. A value stops
+    only when mAP50-95 is greater than or equal to that target. The returned
+    state always includes this epoch's plateau update.
     """
     losses = (observation.val_box_loss, observation.val_cls_loss, observation.val_dfl_loss)
     loss = total_val_loss(*losses) if all(item is not None for item in losses) else None
@@ -235,8 +237,8 @@ class AcceptableResultStop:
         apply_stop(trainer, decision)
         print(
             f"Stopping: {decision.reason}. "
-            f"mAP50-95={observation.map5095} "
-            f"stall_epochs={decision.state.stall_epochs} "
+            f"mAP50-95={observation.map5095} map_target={self.config.map_target} "
+            f"best_loss={decision.state.best_loss} stall_epochs={decision.state.stall_epochs} "
             f"elapsed_hours={observation.elapsed_seconds / 3600:.2f}. "
             "This epoch was already validated and last.pt/best.pt were saved.",
             flush=True,
