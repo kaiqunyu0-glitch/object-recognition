@@ -1,0 +1,53 @@
+# 這是給自動測試與合成圖片的小設定。
+# 訓練真實照片請用 config.yaml，不要用這個檔案。
+
+output_dir: runs/smoke
+image_size: 64
+device: auto
+seed: 42
+
+split:
+  train: 0.50
+  val: 0.25
+  test: 0.25
+
+data:
+  csv: null
+  max_side: 256
+
+model:
+  name: tiny
+  pretrained: false
+  dropout: 0.0
+
+train:
+  batch_size: 8
+  head_epochs: 2
+  head_lr: 0.01
+  full_epochs: 8
+  full_lr: 0.01
+  weight_decay: 0.0001
+  label_smoothing: 0.0
+  patience: 10
+  amp: true
+  num_workers: 0
+
+augment:
+  crop_scale_min: 0.9
+  hflip: true
+  color_jitter: 0.0
+  randaugment: false
+  trivial_augment: false
+
+eval:
+  batch_size: 8
+  tta: false
+
+predict:
+  top_k: 3
+  unknown_threshold: 0.50
+
+duplicates:
+  enabled: true
+  hash_size: 8
+  max_distance: 6

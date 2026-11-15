@@ -1,0 +1,79 @@
+# 訓練結果（模型、報表、圖片）會放在這個資料夾。
+output_dir: runs/exp
+
+# 照片最後會被縮成這個邊長。ConvNeXt、EfficientNet、ViT 預設用 224。
+image_size: 224
+
+# auto：有 NVIDIA GPU 用 cuda，有 Apple GPU 用 mps，否則用 cpu。
+device: auto
+
+# 這個種子同時決定資料怎麼切，以及訓練時的隨機順序。
+# 不要為了讓測試分數變好看而一直改它。
+seed: 42
+
+# 只有「一個資料夾、裡面是各類別」時才會用到。
+# 如果已經有 train/val/test，程式會照那些資料夾，不再重切。
+split:
+  train: 0.70
+  val: 0.15
+  test: 0.15
+
+data:
+  # 可改成一個 CSV 路徑，欄位是 path,label。沒有就維持 null。
+  csv: null
+  # 手機原圖很大。讀進來後先把長邊縮到這個像素，避免記憶體爆掉。0 表示不縮小。
+  max_side: 1600
+
+model:
+  # convnext_tiny、efficientnet_v2_s、vit_b_16、mobilenet_v3_small、tiny
+  # tiny 沒有預訓練權重，只給自動測試用。真實照片請用 convnext_tiny。
+  # CPU 太慢時可以改成 mobilenet_v3_small。
+  name: convnext_tiny
+  pretrained: true
+  dropout: 0.2
+
+train:
+  batch_size: 16
+  # 第一階段：只訓練新的最後一層。
+  head_epochs: 5
+  head_lr: 0.001
+  # 第二階段：用較小的學習率微調整個模型。
+  full_epochs: 15
+  full_lr: 0.0001
+  weight_decay: 0.0001
+  # 標籤平滑。讓模型不要對訓練照片過度自信。
+  label_smoothing: 0.1
+  # 驗證正確率連續這麼多輪沒有變好，就停止這一階段。0 表示不要提早停。
+  patience: 5
+  # 混合精度只在 NVIDIA GPU 上生效。CPU 和 Mac 會自動用一般精度。
+  amp: true
+  # 讀照片的背景程序數量。遇到奇怪的錯誤就維持 0。照片很多、訓練很慢再改成 2 或 4。
+  num_workers: 0
+
+augment:
+  # 隨機裁切時至少保留原圖的這個比例。越小，模型越習慣物件沒有占滿畫面。
+  crop_scale_min: 0.6
+  hflip: true
+  # 亮度、對比、飽和度的抖動。色相不動，避免紅瓶子被學成藍瓶子。
+  color_jitter: 0.3
+  # 兩個都設 true 時只用 RandAugment。
+  randaugment: true
+  trivial_augment: false
+
+eval:
+  batch_size: 32
+  # true 時，測試與預測會把照片水平翻轉再平均。驗證集挑選模型時不會用這個。
+  tta: false
+
+predict:
+  top_k: 3
+  # 最高機率低於這個門檻就回答 unknown，而不是硬猜一個類別。
+  unknown_threshold: 0.60
+
+duplicates:
+  # 檢查有沒有幾乎一樣的照片被分到不同組。
+  enabled: true
+  hash_size: 8
+  # 距離越小越像。6 大約是連拍或同一張稍做修改的圖。
+  # 如果警告把明顯不同的照片也算進去，把這個數字調小，例如 3。
+  max_distance: 6

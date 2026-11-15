@@ -1,0 +1,32 @@
+# 給自動測試與合成圖片。偵測真實照片請用 config.detect.yaml。
+
+output_dir: runs/detect-smoke
+model: yolo11n.yaml
+imgsz: 64
+epochs: 1
+batch: 4
+device: auto
+seed: 42
+patience: 0
+workers: 0
+conf: 0.25
+iou: 0.70
+match_iou: 0.50
+
+split:
+  train: 0.50
+  val: 0.25
+  test: 0.25
+
+max_side: 256
+
+duplicates:
+  enabled: true
+  hash_size: 8
+  max_distance: 6
+
+train:
+  mosaic: 0.0
+  # true on purpose: CPU training must ignore it and say so.
+  amp: true
+  plots: false
